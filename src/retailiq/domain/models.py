@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from retailiq.core.enums import Route
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class TraceStep(BaseModel):
@@ -67,6 +73,59 @@ class QueryResult(BaseModel):
         for chunk in self.chunks:
             seen.setdefault(chunk.source, None)
         return list(seen)
+
+
+class ChatTurn(BaseModel):
+    """One message in a conversation.
+
+    Assistant turns carry the provenance fields alongside the text, so a
+    reloaded conversation still shows *why* each answer was given rather than
+    degrading into a plain transcript.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str
+    timestamp: datetime = Field(default_factory=_now)
+
+    # Assistant-only. Left unset on user turns.
+    sources: list[str] = Field(default_factory=list)
+    trace: list[str] = Field(default_factory=list)
+    route: Route | None = None
+    grounded: bool | None = None
+    latency_ms: int | None = None
+
+
+class Conversation(BaseModel):
+    """A named, persisted sequence of turns."""
+
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:12])
+    title: str = "New chat"
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    turns: list[ChatTurn] = Field(default_factory=list)
+
+    def add(self, turn: ChatTurn) -> None:
+        self.turns.append(turn)
+        self.updated_at = _now()
+        # Name the thread from its opening question, the way a chat client
+        # does — a list of "New chat" entries is unusable.
+        if self.title == "New chat" and turn.role == "user":
+            self.title = self._derive_title(turn.content)
+
+    @staticmethod
+    def _derive_title(text: str, limit: int = 48) -> str:
+        cleaned = " ".join(text.split())
+        if len(cleaned) <= limit:
+            return cleaned
+        return cleaned[: limit - 1].rstrip() + "…"
+
+    def history_before_last(self) -> list[ChatTurn]:
+        """Prior turns, excluding the user message being answered right now."""
+        return self.turns[:-1] if self.turns else []
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.turns
 
 
 class EvaluationCase(BaseModel):

@@ -14,10 +14,15 @@ from langchain_core.documents import Document
 from retailiq.agent.graph import get_compiled_graph
 from retailiq.agent.state import initial_state
 from retailiq.core.enums import Route
-from retailiq.core.exceptions import AgentExecutionError, RetailIQError
+from retailiq.core.exceptions import (
+    AgentExecutionError,
+    ProviderQuotaError,
+    RetailIQError,
+    is_quota_error,
+)
 from retailiq.core.logging import get_logger, new_correlation_id
 from retailiq.core.settings import Settings, get_settings
-from retailiq.domain.models import QueryResult, RetrievedChunk, TraceStep
+from retailiq.domain.models import ChatTurn, QueryResult, RetrievedChunk, TraceStep
 
 logger = get_logger(__name__)
 
@@ -29,11 +34,21 @@ class RAGService:
         self._settings = settings or get_settings()
 
     # -- public API --------------------------------------------------------
-    def answer(self, question: str, *, correlation_id: str | None = None) -> QueryResult:
-        """Answer one question.
+    def answer(
+        self,
+        question: str,
+        *,
+        history: list[ChatTurn] | None = None,
+        correlation_id: str | None = None,
+    ) -> QueryResult:
+        """Answer one question, optionally in the context of a conversation.
 
         Args:
             question: The user's natural-language question.
+            history: Prior turns in this conversation. When supplied, the
+                agent resolves references ("what about food?") against them
+                before retrieval. Omit it for a one-shot question — the graph
+                then skips the contextualisation call entirely.
             correlation_id: Ties this run's logs to a caller's request. One
                 is generated if not supplied.
 
@@ -56,15 +71,21 @@ class RAGService:
         started = time.perf_counter()
         logger.info("Answering question", extra={"question": question})
 
+        turns = [(turn.role, turn.content) for turn in (history or [])]
+
         try:
             final_state = get_compiled_graph().invoke(
-                initial_state(question),
+                initial_state(question, history=turns),
                 config={"recursion_limit": self._settings.agent.recursion_limit},
             )
         except RetailIQError:
             # Already a typed, well-described failure — don't rewrap and lose it.
             raise
         except Exception as exc:
+            # A quota refusal is not a malfunction, and saying "agent graph
+            # failed" sends people debugging code that works.
+            if is_quota_error(exc):
+                raise ProviderQuotaError(str(self._settings.llm.provider), str(exc)[:200]) from exc
             raise AgentExecutionError(f"Agent graph failed: {exc}", question=question) from exc
 
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -88,6 +109,35 @@ class RAGService:
         return {
             **self._settings.describe(),
             "index_built": index_exists(self._settings),
+        }
+
+    def index_stats(self) -> dict[str, object]:
+        """Live facts about the built index, for display in a UI.
+
+        Read from the store itself rather than hard-coded, so the numbers
+        stay true after a re-ingest or a change to the knowledge base.
+        """
+        from retailiq.ingestion.loaders import discover_documents
+        from retailiq.ingestion.vector_store import get_vector_store, index_exists
+
+        if not index_exists(self._settings):
+            return {"built": False, "documents": 0, "chunks": 0, "sources": []}
+
+        try:
+            chunks = get_vector_store(self._settings)._collection.count()
+        except Exception:
+            chunks = 0
+
+        try:
+            paths = discover_documents(self._settings.paths.knowledge_base_dir)
+        except Exception:
+            paths = []
+
+        return {
+            "built": True,
+            "documents": len(paths),
+            "chunks": chunks,
+            "sources": [p.name for p in paths],
         }
 
     # -- internals ---------------------------------------------------------

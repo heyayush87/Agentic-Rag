@@ -23,7 +23,13 @@ from typing import Annotated, Any
 from pydantic import AliasChoices, Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from retailiq.core.enums import AppEnvironment, EmbeddingProvider, LLMProvider, LogFormat
+from retailiq.core.enums import (
+    AppEnvironment,
+    EmbeddingProvider,
+    LLMProvider,
+    LogFormat,
+    SearchProvider,
+)
 
 # src/retailiq/core/settings.py -> core -> retailiq -> src -> <project root>
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -62,6 +68,14 @@ class PathSettings(BaseSettings):
     def eval_dataset(self) -> Path:
         """Golden question set used by the evaluation harness."""
         return self.data_dir / "eval" / "eval_questions.json"
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def conversations_dir(self) -> Path:
+        """Where chat history is persisted. Sits under `var/` so it is
+        git-ignored alongside the vector index — it is runtime state, not
+        source."""
+        return self.chroma_dir.parent / "conversations"
 
 
 class LLMSettings(BaseSettings):
@@ -222,6 +236,22 @@ class ToolSettings(BaseSettings):
     web_search_max_results: int = Field(
         default=4, gt=0, le=20, validation_alias="WEB_SEARCH_MAX_RESULTS"
     )
+    # DuckDuckGo needs no key, so it stays the default. Tavily returns cleaner
+    # extracts for grounding but requires an account.
+    web_search_provider: SearchProvider = Field(
+        default=SearchProvider.DUCKDUCKGO, validation_alias="WEB_SEARCH_PROVIDER"
+    )
+    tavily_api_key: SecretStr | None = Field(default=None, validation_alias="TAVILY_API_KEY")
+
+    @field_validator("web_search_provider", mode="before")
+    @classmethod
+    def _normalise(cls, v: Any) -> Any:
+        return v.strip().lower() if isinstance(v, str) else v
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def tavily_api_key_value(self) -> str | None:
+        return self.tavily_api_key.get_secret_value() if self.tavily_api_key else None
 
 
 class ObservabilitySettings(BaseSettings):

@@ -17,6 +17,7 @@ def test_graph_compiles_without_any_provider_configured() -> None:
 def test_every_node_is_registered() -> None:
     nodes = set(build_graph().get_graph().nodes)
     for expected in (
+        "contextualize",
         "route_question",
         "retrieve",
         "grade_documents",
@@ -33,6 +34,9 @@ def test_self_correction_loops_exist() -> None:
     graph = build_graph().get_graph()
     edges = {(e.source, e.target) for e in graph.edges}
 
+    assert ("contextualize", "route_question") in edges, (
+        "follow-ups must be resolved before routing sees the question"
+    )
     assert ("rewrite", "retrieve") in edges, "rewrite must feed back into retrieval"
     assert ("generate", "generate") in edges, "ungrounded answers must regenerate"
     assert ("generate", "rewrite") in edges, "unhelpful answers must re-query"

@@ -7,7 +7,8 @@ three times with three subtly different behaviours.
 
 from __future__ import annotations
 
+from retailiq.services.conversation_store import ConversationStore
 from retailiq.services.evaluation_service import EvaluationService
 from retailiq.services.rag_service import RAGService
 
-__all__ = ["EvaluationService", "RAGService"]
+__all__ = ["ConversationStore", "EvaluationService", "RAGService"]

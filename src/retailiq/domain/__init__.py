@@ -8,6 +8,8 @@ the transport layers from re-deriving business meaning independently.
 from __future__ import annotations
 
 from retailiq.domain.models import (
+    ChatTurn,
+    Conversation,
     EvaluationCase,
     EvaluationReport,
     EvaluationRowResult,
@@ -17,6 +19,8 @@ from retailiq.domain.models import (
 )
 
 __all__ = [
+    "ChatTurn",
+    "Conversation",
     "EvaluationCase",
     "EvaluationReport",
     "EvaluationRowResult",

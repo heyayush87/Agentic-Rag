@@ -85,6 +85,54 @@ class RetrievalError(RetailIQError):
     code = "retrieval_error"
 
 
+class ProviderQuotaError(RetailIQError):
+    """The LLM provider refused the call for quota or rate-limit reasons.
+
+    Worth its own type because the remedy is completely different from a bug:
+    nothing is broken, the account is simply out of budget. Surfacing it as a
+    generic failure sends people debugging code that is working correctly.
+
+    The agent makes six or seven calls per question, so free tiers are reached
+    far sooner here than in a single-shot chatbot — which is exactly why the
+    message names the switch-provider fix.
+    """
+
+    status_code = 429
+    code = "provider_quota_exceeded"
+
+    def __init__(self, provider: str, detail: str = "") -> None:
+        super().__init__(
+            f"Provider {provider!r} rejected the request: out of quota or rate-limited. "
+            f"This agent makes ~7 model calls per question, so free tiers run out quickly. "
+            f"Switch provider in .env (e.g. LLM_PROVIDER=groq) or wait for the quota to reset."
+            + (f" Provider said: {detail}" if detail else ""),
+            provider=provider,
+        )
+
+
+#: Substrings that identify a quota/rate-limit refusal across providers.
+#: Matched against the exception text because each SDK raises its own type,
+#: and importing all of them here would defeat the point of the factory.
+_QUOTA_MARKERS = (
+    "402",
+    "429",
+    "payment required",
+    "too many requests",
+    "rate limit",
+    "quota",
+    "depleted",
+    "insufficient_quota",
+    "credits",
+    "billing",
+)
+
+
+def is_quota_error(exc: BaseException) -> bool:
+    """Whether `exc` looks like a provider quota or rate-limit refusal."""
+    text = str(exc).lower()
+    return any(marker in text for marker in _QUOTA_MARKERS)
+
+
 class AgentExecutionError(RetailIQError):
     """The agent graph failed or exceeded its step budget."""
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from retailiq.core.enums import SearchProvider
 from retailiq.core.logging import get_logger
 from retailiq.core.settings import Settings, get_settings
 from retailiq.tools.base import Tool, ToolResult
+from retailiq.tools.tavily_search import TavilySearchTool
 from retailiq.tools.web_search import WebSearchTool
 
 logger = get_logger(__name__)
@@ -51,4 +53,28 @@ def default_registry(settings: Settings | None = None) -> ToolRegistry:
     settings = settings or get_settings()
     registry = ToolRegistry()
     registry.register(WebSearchTool(settings))
+    registry.register(TavilySearchTool(settings))
     return registry
+
+
+def resolve_web_search(settings: Settings | None = None) -> Tool:
+    """Return the web-search tool the configuration asks for.
+
+    Falls back to DuckDuckGo when Tavily is selected but unusable — a missing
+    key or uninstalled SDK should degrade the search, not fail the request.
+    The fallback is logged, because silently using a different provider than
+    the one configured is exactly the kind of surprise that wastes an
+    afternoon later.
+    """
+    settings = settings or get_settings()
+
+    if settings.tools.web_search_provider is SearchProvider.TAVILY:
+        tavily = TavilySearchTool(settings)
+        if tavily.is_available():
+            return tavily
+        logger.warning(
+            "WEB_SEARCH_PROVIDER=tavily but it is unavailable "
+            "(missing TAVILY_API_KEY or tavily-python); falling back to DuckDuckGo."
+        )
+
+    return WebSearchTool(settings)

@@ -13,6 +13,17 @@ nothing even though grading runs once per retrieved chunk.
 
 from __future__ import annotations
 
+CONTEXTUALIZE_SYSTEM = """Given a conversation history and a follow-up question,
+rewrite the follow-up as a STANDALONE question that makes sense on its own.
+
+Rules:
+- Resolve pronouns and references using the history. "Can I return it?" after a
+  question about a kettle becomes "Can I return a kettle?"
+- Handle elliptical follow-ups: "What about food?" after a returns question
+  becomes "What is the returns policy for food?"
+- If the question is already standalone, return it UNCHANGED.
+- Never answer the question. Return ONLY the rewritten question."""
+
 ROUTER_SYSTEM = """You are the routing brain of a retail operations assistant.
 Decide where a user question should be answered from.
 

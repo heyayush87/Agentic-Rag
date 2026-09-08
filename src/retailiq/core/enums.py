@@ -53,6 +53,13 @@ class EmbeddingProvider(StrEnum):
     HUGGINGFACE = "huggingface"
 
 
+class SearchProvider(StrEnum):
+    """Web-search backends for the fallback tool."""
+
+    DUCKDUCKGO = "duckduckgo"
+    TAVILY = "tavily"
+
+
 class LogFormat(StrEnum):
     """``CONSOLE`` for humans, ``JSON`` for log aggregators."""
 

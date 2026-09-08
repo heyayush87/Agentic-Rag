@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 # Node identifiers. Constants because LangGraph resolves these as strings at
 # runtime — a typo in a routing map would otherwise surface as a confusing
 # KeyError deep inside an invocation rather than at build time.
+CONTEXTUALIZE = "contextualize"
 ROUTE_QUESTION = "route_question"
 RETRIEVE = "retrieve"
 GRADE_DOCUMENTS = "grade_documents"
@@ -49,6 +50,7 @@ def build_graph() -> Any:
     """
     graph = StateGraph(AgentState)
 
+    graph.add_node(CONTEXTUALIZE, nodes.contextualize_question)
     graph.add_node(ROUTE_QUESTION, nodes.route_question)
     graph.add_node(RETRIEVE, nodes.retrieve)
     graph.add_node(GRADE_DOCUMENTS, nodes.grade_documents)
@@ -57,7 +59,10 @@ def build_graph() -> Any:
     graph.add_node(GENERATE, nodes.generate)
     graph.add_node(DIRECT_ANSWER, nodes.direct_answer)
 
-    graph.add_edge(START, ROUTE_QUESTION)
+    # Resolve conversational references before anything else looks at the
+    # question, so routing and retrieval both see a standalone form.
+    graph.add_edge(START, CONTEXTUALIZE)
+    graph.add_edge(CONTEXTUALIZE, ROUTE_QUESTION)
 
     graph.add_conditional_edges(
         ROUTE_QUESTION,

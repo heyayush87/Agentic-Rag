@@ -17,7 +17,7 @@ from retailiq.core.exceptions import RetrievalError, VectorStoreNotFoundError
 from retailiq.core.logging import get_logger
 from retailiq.core.settings import get_settings
 from retailiq.llm.factory import get_chat_model
-from retailiq.tools.registry import default_registry
+from retailiq.tools.registry import resolve_web_search
 
 logger = get_logger(__name__)
 
@@ -47,6 +47,70 @@ def _user_question(state: AgentState) -> str:
     ``question`` is absent, even when ``original_question`` is present.
     """
     return state.get("original_question") or state.get("question") or ""
+
+
+def _render_history(history: list[tuple[str, str]], max_turns: int = 6) -> str:
+    """Format recent turns for the contextualisation prompt.
+
+    Only the tail is included. Older turns rarely disambiguate the current
+    follow-up, and an unbounded transcript grows the prompt (and its cost)
+    without bound as a conversation runs on.
+    """
+    recent = history[-max_turns:]
+    return "\n".join(f"{role.capitalize()}: {content}" for role, content in recent)
+
+
+# ---------------------------------------------------------------------------
+# Conversational memory
+# ---------------------------------------------------------------------------
+def contextualize_question(state: AgentState) -> AgentState:
+    """Rewrite a follow-up into a standalone question using conversation history.
+
+    This is what makes multi-turn work. Retrieval is stateless: embedding
+    "what about food?" matches nothing useful, because the words that carry
+    the meaning ("returns policy") are in the *previous* turn. Resolving the
+    reference once, up front, means every downstream node — router, retriever,
+    graders — sees a self-contained question and needs no history of its own.
+
+    Skips the LLM call entirely when there is no history, so the first message
+    of a conversation costs nothing extra.
+    """
+    history = state.get("history") or []
+    if not history:
+        return AgentState(contextualized=False)
+
+    llm = get_chat_model()
+    response = llm.invoke(
+        [
+            SystemMessage(content=prompts.CONTEXTUALIZE_SYSTEM),
+            HumanMessage(
+                content=(
+                    f"Conversation so far:\n{_render_history(history)}\n\n"
+                    f"Follow-up question: {state['question']}"
+                )
+            ),
+        ]
+    )
+    standalone = str(response.content).strip()
+
+    # A model that ignores the instruction and answers instead would poison
+    # retrieval, so fall back to the original rather than trusting the output.
+    if not standalone or len(standalone) > 500:
+        logger.warning("Contextualisation returned an unusable rewrite; keeping original")
+        return AgentState(contextualized=False)
+
+    if standalone == state["question"]:
+        return AgentState(
+            contextualized=False,
+            trace=append_trace(state, "question already standalone"),
+        )
+
+    return AgentState(
+        question=standalone,
+        original_question=standalone,
+        contextualized=True,
+        trace=append_trace(state, f"resolved follow-up → {standalone!r}"),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -153,14 +217,15 @@ def rewrite_query(state: AgentState) -> AgentState:
 # ---------------------------------------------------------------------------
 def web_search(state: AgentState) -> AgentState:
     """Fall back to public web search and wrap the result as a document."""
-    result = default_registry().run("web_search", state["question"])
+    tool = resolve_web_search()
+    result = tool.run(state["question"])
     document = Document(
         page_content=result.content,
-        metadata={"source": "web_search", "topic": "web", "success": result.success},
+        metadata={"source": tool.name, "topic": "web", "success": result.success},
     )
     return AgentState(
         documents=[document],
-        trace=append_trace(state, f"used web_search tool (success={result.success})"),
+        trace=append_trace(state, f"used {tool.name} (success={result.success})"),
     )
 
 

@@ -28,6 +28,17 @@ class AgentState(TypedDict, total=False):
     judge against this, never the rewritten form, so a bad rewrite cannot
     silently change what gets answered."""
 
+    history: list[tuple[str, str]]
+    """Prior conversation as (role, content) pairs, oldest first.
+
+    Retrieval is stateless — an embedding of "what about food?" matches
+    nothing useful. So history is not passed to the retriever; it is used once,
+    up front, to rewrite the follow-up into a standalone question.
+    """
+
+    contextualized: bool
+    """Whether the opening node rewrote the question using history."""
+
     # --- routing ----------------------------------------------------------
     route: Route
 
@@ -54,11 +65,20 @@ class AgentState(TypedDict, total=False):
     trace: list[str]
 
 
-def initial_state(question: str) -> AgentState:
-    """Build the entry state for a fresh question."""
+def initial_state(question: str, history: list[tuple[str, str]] | None = None) -> AgentState:
+    """Build the entry state for a fresh question.
+
+    Args:
+        question: What the user just typed, verbatim.
+        history: Prior (role, content) turns. Empty for the first message of a
+            conversation, which lets the contextualisation node skip its LLM
+            call entirely rather than paying for a no-op rewrite.
+    """
     return AgentState(
         question=question,
         original_question=question,
+        history=list(history or []),
+        contextualized=False,
         documents=[],
         rewrites=0,
         generation_attempts=0,

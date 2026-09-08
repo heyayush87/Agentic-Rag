@@ -41,6 +41,65 @@ def test_first_token_survives_model_formatting(raw: str, expected: str) -> None:
     assert nodes._first_token(raw) == expected
 
 
+# --- conversational memory ------------------------------------------------
+def test_first_message_skips_contextualisation(patch_model) -> None:
+    """No history means no reference to resolve — don't pay for an LLM call."""
+    model = patch_model(["should not be called"])
+    result = nodes.contextualize_question(AgentState(question="hello", history=[]))
+
+    assert result["contextualized"] is False
+    assert model.calls == []
+
+
+def test_follow_up_is_rewritten_as_standalone(patch_model) -> None:
+    """'What about food?' retrieves nothing on its own — the meaning lives in
+    the previous turn."""
+    patch_model(["What is the returns policy for food?"])
+    state = AgentState(
+        question="What about food?",
+        original_question="What about food?",
+        history=[
+            ("user", "How long to return an electrical item?"),
+            ("assistant", "30 days with a receipt."),
+        ],
+    )
+    result = nodes.contextualize_question(state)
+
+    assert result["question"] == "What is the returns policy for food?"
+    assert result["original_question"] == "What is the returns policy for food?"
+    assert result["contextualized"] is True
+
+
+def test_already_standalone_question_is_left_alone(patch_model) -> None:
+    patch_model(["How many points for a voucher?"])
+    state = AgentState(
+        question="How many points for a voucher?",
+        history=[("user", "hi"), ("assistant", "hello")],
+    )
+    assert nodes.contextualize_question(state)["contextualized"] is False
+
+
+def test_unusable_rewrite_falls_back_to_the_original(patch_model) -> None:
+    """A model that answers instead of rewriting would poison retrieval."""
+    patch_model(["   "])
+    state = AgentState(question="What about food?", history=[("user", "returns?")])
+    result = nodes.contextualize_question(state)
+
+    assert result["contextualized"] is False
+    assert "question" not in result  # original left untouched
+
+
+def test_only_recent_history_is_sent(patch_model) -> None:
+    """An unbounded transcript grows prompt cost without bound."""
+    model = patch_model(["standalone"])
+    history = [("user", f"turn {i}") for i in range(20)]
+    nodes.contextualize_question(AgentState(question="and that?", history=history))
+
+    sent = model.calls[0][-1].content
+    assert "turn 19" in sent
+    assert "turn 0" not in sent
+
+
 # --- routing --------------------------------------------------------------
 def test_router_parses_a_valid_route(patch_model) -> None:
     patch_model(["web_search"])
