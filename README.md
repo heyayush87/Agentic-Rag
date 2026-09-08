@@ -103,13 +103,25 @@ Copy `.env.example` to `.env` and set `LLM_PROVIDER`:
 
 | Provider | Cost | What to set |
 |----------|------|-------------|
-| **Groq** (recommended) | Free tier | `LLM_PROVIDER=groq`, `GROQ_API_KEY=…`, `EMBED_PROVIDER=local` |
+| **Hugging Face** ⭐ | Free | `LLM_PROVIDER=huggingface`, `EMBED_PROVIDER=huggingface`, `HF_TOKEN=…` |
+| **Groq** | Free tier | `LLM_PROVIDER=groq`, `GROQ_API_KEY=…` (+ an embedding provider) |
 | **Google Gemini** | Free tier | `LLM_PROVIDER=google`, `GOOGLE_API_KEY=…`, `EMBED_PROVIDER=google` |
 | **OpenAI** | Paid | `LLM_PROVIDER=openai`, `OPENAI_API_KEY=…`, `EMBED_PROVIDER=openai` |
 | **Ollama** | Free, fully local | `LLM_PROVIDER=ollama`, `EMBED_PROVIDER=ollama` |
 
-`EMBED_PROVIDER=local` runs a small on-device sentence-transformers model, so
-embeddings stay free regardless of which chat provider you pick.
+**Hugging Face is the recommended start:** one free token covers *both* chat and
+embeddings, and it installs no torch, so it works on any Python version and on
+size-capped hosts.
+
+Chat and embedding providers are configured independently, because they are
+independent choices — Groq has the fastest chat inference but exposes no
+embedding endpoint at all, so `groq` + `huggingface` is a valid pairing.
+`EMBED_PROVIDER=local` runs the same MiniLM model on-device instead of over the
+API; identical vectors, no egress, but it pulls torch (~2 GB).
+
+> ⚠️ Changing `EMBED_PROVIDER` requires a full re-ingest. Different models
+> produce vectors in incompatible spaces, and searching an index with the wrong
+> model returns noise **silently, without an error**.
 
 ### 3. Build the index and ask
 ```bash

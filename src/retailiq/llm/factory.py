@@ -46,7 +46,7 @@ def _require_api_key(settings: Settings, provider: LLMProvider) -> None:
         return
     if settings.llm.api_key_for(provider):
         return
-    env_var = f"{provider.value.upper()}_API_KEY"
+    env_var = settings.llm.env_var_for(provider)
     raise ConfigurationError(
         f"LLM_PROVIDER={provider.value!r} but {env_var} is not set. "
         f"Add it to your .env file, or switch to LLM_PROVIDER=ollama to run fully locally.",
@@ -132,6 +132,29 @@ def _build_chat_model(settings: Settings, provider: LLMProvider, temperature: fl
             temperature=temperature,
         )
 
+    if provider is LLMProvider.HUGGINGFACE:
+        try:
+            from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+        except ImportError as exc:
+            raise ProviderNotInstalledError(
+                "huggingface", "langchain-huggingface", "huggingface"
+            ) from exc
+
+        token = settings.llm.hf_token
+        # HF exposes a raw text-generation endpoint; `ChatHuggingFace` wraps it
+        # in the chat interface the rest of the codebase expects, applying the
+        # model's own chat template.
+        endpoint = HuggingFaceEndpoint(
+            repo_id=settings.llm.hf_chat_model,
+            task="text-generation",
+            huggingfacehub_api_token=token.get_secret_value() if token else None,
+            # HF rejects temperature=0 (it must be strictly positive), so clamp
+            # to a near-zero value that is deterministic in practice.
+            temperature=max(temperature, 0.01),
+            timeout=settings.llm.request_timeout,
+        )
+        return ChatHuggingFace(llm=endpoint)
+
     raise ConfigurationError(
         f"Unsupported LLM_PROVIDER={provider!r}. "
         f"Choose one of: {', '.join(p.value for p in LLMProvider)}."
@@ -167,6 +190,7 @@ def _embedding_model_name(settings: Settings) -> str:
         EmbeddingProvider.GOOGLE: settings.embeddings.google_model,
         EmbeddingProvider.OLLAMA: settings.embeddings.ollama_model,
         EmbeddingProvider.LOCAL: settings.embeddings.local_model,
+        EmbeddingProvider.HUGGINGFACE: settings.embeddings.hf_model,
     }[settings.embeddings.provider]
 
 
@@ -200,6 +224,25 @@ def _build_embeddings(settings: Settings, provider: EmbeddingProvider) -> Any:
         return OllamaEmbeddings(
             model=settings.embeddings.ollama_model,
             base_url=settings.llm.ollama_base_url,
+        )
+
+    if provider is EmbeddingProvider.HUGGINGFACE:
+        # The same MiniLM model as `LOCAL`, but computed on HF's servers.
+        # Identical 384-dimension vectors with no torch install — which is what
+        # makes this viable on Python versions lacking torch wheels, and on
+        # size-capped hosts where a 2 GB dependency fails the build.
+        try:
+            from langchain_huggingface import HuggingFaceEndpointEmbeddings
+        except ImportError as exc:
+            raise ProviderNotInstalledError(
+                "huggingface", "langchain-huggingface", "huggingface"
+            ) from exc
+
+        token = settings.llm.hf_token
+        return HuggingFaceEndpointEmbeddings(
+            model=settings.embeddings.hf_model,
+            task="feature-extraction",
+            huggingfacehub_api_token=token.get_secret_value() if token else None,
         )
 
     if provider is EmbeddingProvider.LOCAL:

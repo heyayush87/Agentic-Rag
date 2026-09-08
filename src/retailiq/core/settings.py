@@ -20,7 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
 
-from pydantic import Field, SecretStr, computed_field, field_validator
+from pydantic import AliasChoices, Field, SecretStr, computed_field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from retailiq.core.enums import AppEnvironment, EmbeddingProvider, LLMProvider, LogFormat
@@ -93,6 +93,18 @@ class LLMSettings(BaseSettings):
         default="http://localhost:11434", validation_alias="OLLAMA_BASE_URL"
     )
 
+    # One token covers chat *and* embeddings on Hugging Face, so a single free
+    # account is a complete configuration. `HUGGINGFACEHUB_API_TOKEN` is the
+    # name LangChain's own SDK reads; `HF_TOKEN` is the shorter conventional
+    # name. Both are accepted so an existing .env keeps working either way.
+    hf_token: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("HF_TOKEN", "HUGGINGFACEHUB_API_TOKEN"),
+    )
+    hf_chat_model: str = Field(
+        default="Qwen/Qwen2.5-72B-Instruct", validation_alias="HF_CHAT_MODEL"
+    )
+
     @field_validator("provider", mode="before")
     @classmethod
     def _normalise(cls, v: Any) -> Any:
@@ -104,9 +116,26 @@ class LLMSettings(BaseSettings):
             LLMProvider.OPENAI: self.openai_api_key,
             LLMProvider.GROQ: self.groq_api_key,
             LLMProvider.GOOGLE: self.google_api_key,
+            LLMProvider.HUGGINGFACE: self.hf_token,
             LLMProvider.OLLAMA: None,  # local runtime, no key
         }.get(provider)
         return secret.get_secret_value() if secret else None
+
+    @staticmethod
+    def env_var_for(provider: LLMProvider) -> str:
+        """The environment variable that holds this provider's credential.
+
+        Not derivable from the provider name — Hugging Face's is `HF_TOKEN`,
+        not `HUGGINGFACE_API_KEY` — so an explicit map keeps error messages
+        pointing at the variable the user actually has to set.
+        """
+        return {
+            LLMProvider.OPENAI: "OPENAI_API_KEY",
+            LLMProvider.GROQ: "GROQ_API_KEY",
+            LLMProvider.GOOGLE: "GOOGLE_API_KEY",
+            LLMProvider.HUGGINGFACE: "HF_TOKEN",
+            LLMProvider.OLLAMA: "(none required)",
+        }[provider]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -132,6 +161,11 @@ class EmbeddingSettings(BaseSettings):
     ollama_model: str = Field(default="nomic-embed-text", validation_alias="OLLAMA_EMBED_MODEL")
     local_model: str = Field(
         default="sentence-transformers/all-MiniLM-L6-v2", validation_alias="LOCAL_EMBED_MODEL"
+    )
+    # Same model as `local_model`, served over HF's API rather than run
+    # on-device. Produces the same 384-dimension vectors without torch.
+    hf_model: str = Field(
+        default="sentence-transformers/all-MiniLM-L6-v2", validation_alias="HF_EMBED_MODEL"
     )
 
     @field_validator("provider", mode="before")

@@ -46,6 +46,11 @@ openai = ["langchain-openai>=0.2.0"]
 groq = ["langchain-groq>=0.2.0"]
 google = ["langchain-google-genai>=2.0"]
 ollama = ["langchain-ollama>=0.2.0"]
+# Hugging Face over the hosted inference API: chat AND embeddings on one free
+# token, with no torch. This is the lightest complete configuration.
+huggingface = ["langchain-huggingface>=0.1.0", "huggingface-hub>=0.24.0"]
+# Same MiniLM embeddings run on-device. Pulls torch (~2 GB) — opt in only when
+# you want zero egress and have the disk for it.
 local = ["langchain-huggingface>=0.1.0", "sentence-transformers>=3.0.0"]
 search = ["duckduckgo-search>=6.0.0"]
 api = ["fastapi>=0.111.0", "uvicorn[standard]>=0.30.0"]
@@ -58,8 +63,9 @@ dev = [
     "mypy>=1.10.0",
     "pre-commit>=3.7.0",
 ]
-# The default runnable stack: free Groq chat + free on-device embeddings.
-all = ["retailiq[groq,local,search,api,ui]"]
+# The default runnable stack. Uses the Hugging Face API rather than the `local`
+# extra so a plain `pip install -e ".[all]"` does not drag in torch.
+all = ["retailiq[huggingface,groq,search,api,ui]"]
 
 [project.scripts]
 retailiq = "retailiq.cli.main:app"

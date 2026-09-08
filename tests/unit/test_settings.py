@@ -56,6 +56,41 @@ def test_ollama_needs_no_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     assert LLMSettings().requires_api_key is False
 
 
+def test_huggingface_token_accepts_both_env_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`HF_TOKEN` is conventional; `HUGGINGFACEHUB_API_TOKEN` is what the SDK
+    reads. An existing .env must keep working either way."""
+    monkeypatch.setenv("HF_TOKEN", "hf_short_name")
+    assert LLMSettings().api_key_for(LLMProvider.HUGGINGFACE) == "hf_short_name"
+
+    monkeypatch.delenv("HF_TOKEN")
+    monkeypatch.setenv("HUGGINGFACEHUB_API_TOKEN", "hf_sdk_name")
+    assert LLMSettings().api_key_for(LLMProvider.HUGGINGFACE) == "hf_sdk_name"
+
+
+def test_huggingface_token_is_not_leaked_by_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HF_TOKEN", "hf_supersecret")
+    assert "hf_supersecret" not in repr(LLMSettings())
+
+
+def test_env_var_name_is_mapped_not_derived() -> None:
+    """HF's variable is HF_TOKEN, not HUGGINGFACE_API_KEY — deriving the name
+    from the provider would point users at a variable that does not exist."""
+    assert LLMSettings.env_var_for(LLMProvider.HUGGINGFACE) == "HF_TOKEN"
+    assert LLMSettings.env_var_for(LLMProvider.GROQ) == "GROQ_API_KEY"
+
+
+def test_huggingface_is_a_complete_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One free token must cover both chat and embeddings."""
+    monkeypatch.setenv("LLM_PROVIDER", "huggingface")
+    monkeypatch.setenv("EMBED_PROVIDER", "huggingface")
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+
+    settings = Settings()
+    assert settings.llm.provider is LLMProvider.HUGGINGFACE
+    assert settings.embeddings.provider is EmbeddingProvider.HUGGINGFACE
+    assert settings.describe()["api_key_configured"] is True
+
+
 def test_describe_never_contains_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GROQ_API_KEY", "gsk_leak_me")
     snapshot = Settings().describe()

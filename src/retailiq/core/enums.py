@@ -32,6 +32,7 @@ class LLMProvider(StrEnum):
     GROQ = "groq"
     GOOGLE = "google"
     OLLAMA = "ollama"
+    HUGGINGFACE = "huggingface"
 
 
 class EmbeddingProvider(StrEnum):
@@ -39,12 +40,17 @@ class EmbeddingProvider(StrEnum):
 
     ``LOCAL`` runs sentence-transformers on-device, which is why Groq (which
     exposes no embedding endpoint) is still a complete configuration.
+
+    ``HUGGINGFACE`` runs the *same* MiniLM model over HF's hosted inference
+    API instead of locally. Identical vectors, but no torch dependency — which
+    matters on Python versions with no torch wheels and on size-capped hosts.
     """
 
     OPENAI = "openai"
     GOOGLE = "google"
     OLLAMA = "ollama"
     LOCAL = "local"
+    HUGGINGFACE = "huggingface"
 
 
 class LogFormat(StrEnum):
