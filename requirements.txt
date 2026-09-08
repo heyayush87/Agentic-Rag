@@ -1,0 +1,25 @@
+# Core agentic RAG stack
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-chroma>=0.1.4
+chromadb>=0.5.0
+
+# LLM / embedding providers (install the one(s) you use)
+langchain-openai>=0.2.0      # OpenAI  (set LLM_PROVIDER=openai)
+langchain-groq>=0.2.0        # Groq    (set LLM_PROVIDER=groq)   -- free & fast
+langchain-google-genai>=2.0  # Gemini  (set LLM_PROVIDER=google) -- free tier
+langchain-ollama>=0.2.0      # Ollama  (set LLM_PROVIDER=ollama) -- fully local, no key
+
+# Web-search fallback tool (optional; falls back to a stub if key/pkg missing)
+duckduckgo-search>=6.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Demo UI
+streamlit>=1.36.0
+
+# Evaluation (lightweight, dependency-free metrics live in evaluate.py)

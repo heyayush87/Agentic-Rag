@@ -1,0 +1,42 @@
+[
+  {
+    "question": "How long do I have to return an electrical item bought in store?",
+    "expected_source": "returns_policy.md",
+    "must_include": ["30 days"]
+  },
+  {
+    "question": "Can I return food because I changed my mind?",
+    "expected_source": "returns_policy.md",
+    "must_include": ["hygiene", "cannot"]
+  },
+  {
+    "question": "How many Clubcard points do I need to get a voucher?",
+    "expected_source": "loyalty_clubcard.md",
+    "must_include": ["150"]
+  },
+  {
+    "question": "A chiller reads 7 degrees at opening. What should I do?",
+    "expected_source": "store_operations.md",
+    "must_include": ["escalate", "quarantine"]
+  },
+  {
+    "question": "What temperature must frozen deliveries arrive at?",
+    "expected_source": "supplier_logistics.md",
+    "must_include": ["18"]
+  },
+  {
+    "question": "How much change float goes in a till at opening?",
+    "expected_source": "store_operations.md",
+    "must_include": ["150"]
+  },
+  {
+    "question": "How long are Clubcard vouchers valid for?",
+    "expected_source": "loyalty_clubcard.md",
+    "must_include": ["2 years"]
+  },
+  {
+    "question": "When must a claim be raised for a delivery shortage?",
+    "expected_source": "supplier_logistics.md",
+    "must_include": ["72 hours"]
+  }
+]
