@@ -1,0 +1,47 @@
+name: retailiq
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: retailiq:local
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      APP_ENV: production
+      LOG_FORMAT: json
+      CHROMA_DIR: /var/lib/retailiq/chroma
+    volumes:
+      # Persist the index so a container restart does not force a re-ingest.
+      - index:/var/lib/retailiq/chroma
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  ui:
+    image: retailiq:local
+    depends_on:
+      api:
+        condition: service_started
+    command: >
+      streamlit run src/retailiq/ui/streamlit_app.py
+      --server.port=8501 --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - ../.env
+    environment:
+      CHROMA_DIR: /var/lib/retailiq/chroma
+    volumes:
+      - index:/var/lib/retailiq/chroma
+    restart: unless-stopped
+
+volumes:
+  index:

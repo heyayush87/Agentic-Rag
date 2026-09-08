@@ -1,12 +1,40 @@
+# --- Python ---
 __pycache__/
 *.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# --- Environments & secrets ---
 .env
+.env.*
+!.env.example
 .venv/
 venv/
 env/
-.chroma/
+
+# --- Tooling caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- Runtime state (vector store, logs, reports) ---
+var/
 chroma_db/
+.chroma/
 *.sqlite3
+*.log
+reports/
+
+# --- Private notes (interview prep — deliberately not published) ---
+RESUME.md
+
+# --- Editors / OS ---
+.vscode/
+.idea/
 .DS_Store
 .ipynb_checkpoints/
-*.log
