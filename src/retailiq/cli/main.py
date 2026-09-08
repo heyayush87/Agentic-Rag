@@ -13,6 +13,7 @@ responds instantly instead of loading LangChain, Chroma and torch first.
 
 from __future__ import annotations
 
+import contextlib
 import sys
 from typing import Annotated
 
@@ -39,12 +40,10 @@ def _force_utf8_streams() -> None:
     later. Guarded because a redirected or wrapped stream may not support it.
     """
     for stream in (sys.stdout, sys.stderr):
-        try:
+        # A redirected or wrapped stream (pytest capture, a pipe) may not be
+        # reconfigurable. Nothing here is fatal if it isn't.
+        with contextlib.suppress(AttributeError, ValueError, OSError):
             stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
-        except (AttributeError, ValueError, OSError):  # pragma: no cover
-            # Non-reconfigurable stream (pytest capture, a pipe wrapper).
-            # `errors="replace"` is unavailable, but nothing here is fatal.
-            pass
 
 
 _force_utf8_streams()

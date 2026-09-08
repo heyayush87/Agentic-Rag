@@ -25,7 +25,6 @@ from retailiq.core.settings import (
     get_settings,
 )
 
-
 #: Every settings class that reads the environment. Listed explicitly because
 #: each gets its own merged `model_config` at class-construction time, so
 #: patching one does not affect the others.
