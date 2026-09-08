@@ -12,12 +12,50 @@ from typing import Any
 
 import pytest
 
-from retailiq.core.settings import Settings, get_settings
+from retailiq.core.settings import (
+    AgentSettings,
+    APISettings,
+    EmbeddingSettings,
+    LLMSettings,
+    ObservabilitySettings,
+    PathSettings,
+    RetrievalSettings,
+    Settings,
+    ToolSettings,
+    get_settings,
+)
+
+
+#: Every settings class that reads the environment. Listed explicitly because
+#: each gets its own merged `model_config` at class-construction time, so
+#: patching one does not affect the others.
+_SETTINGS_CLASSES = (
+    Settings,
+    PathSettings,
+    LLMSettings,
+    EmbeddingSettings,
+    RetrievalSettings,
+    AgentSettings,
+    ToolSettings,
+    APISettings,
+    ObservabilitySettings,
+)
 
 
 @pytest.fixture(autouse=True)
 def _isolate_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stop a developer's real `.env` from changing test outcomes."""
+    """Stop a developer's real `.env` from changing test outcomes.
+
+    Two separate sources have to be silenced. Clearing `os.environ` is not
+    enough on its own: pydantic-settings *also* reads the `.env` file, so
+    without disabling `env_file` a developer who configures the project for
+    HuggingFace sees the "defaults" tests fail — while CI, which has no `.env`,
+    passes. That divergence is worse than an outright failure, because it only
+    reproduces on one machine.
+    """
+    for cls in _SETTINGS_CLASSES:
+        monkeypatch.setitem(cls.model_config, "env_file", None)
+
     for var in (
         "LLM_PROVIDER",
         "EMBED_PROVIDER",
