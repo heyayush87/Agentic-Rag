@@ -56,20 +56,49 @@ def test_web_search_failure_is_non_fatal(monkeypatch: pytest.MonkeyPatch) -> Non
     """Offline or rate-limited search must not take the agent down."""
     settings = Settings(tools={"enable_web_search": True})  # type: ignore[arg-type]
 
-    import builtins
+    from retailiq.tools import web_search as module
 
-    real_import = builtins.__import__
-
-    def _blocked(name: str, *args: object, **kwargs: object):
-        if name == "duckduckgo_search":
-            raise ImportError("no network package")
-        return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(builtins, "__import__", _blocked)
+    monkeypatch.setattr(module, "_load_ddgs_client", lambda: None)
 
     result = WebSearchTool(settings).run("q")
     assert result.success is False
     assert "not installed" in result.content
+
+
+def test_the_maintained_ddgs_package_is_preferred() -> None:
+    """`duckduckgo_search` still imports but returns zero results without
+    raising — a silent failure indistinguishable from "no answer exists".
+    The loader must reach for `ddgs` first."""
+    from retailiq.tools.web_search import _load_ddgs_client
+
+    client = _load_ddgs_client()
+    assert client is not None
+    assert client.__module__.startswith("ddgs"), (
+        f"expected the ddgs package, got {client.__module__}"
+    )
+
+
+def test_search_errors_are_reported_as_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A network error degrades the answer rather than crashing the graph."""
+    settings = Settings(tools={"enable_web_search": True})  # type: ignore[arg-type]
+
+    class _Exploding:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def text(self, *a: object, **k: object):
+            raise ConnectionError("network unreachable")
+
+    from retailiq.tools import web_search as module
+
+    monkeypatch.setattr(module, "_load_ddgs_client", lambda: _Exploding)
+
+    result = WebSearchTool(settings).run("q")
+    assert result.success is False
+    assert "ConnectionError" in result.content
 
 
 def test_default_registry_contains_web_search() -> None:
