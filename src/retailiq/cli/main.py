@@ -23,6 +23,32 @@ from rich.table import Table
 
 from retailiq import __version__
 
+
+def _force_utf8_streams() -> None:
+    """Make stdout/stderr UTF-8 before anything writes to them.
+
+    Windows consoles default to a legacy codepage (cp1252 on most UK/US
+    installs) which cannot encode the characters this CLI emits — the ``✓``
+    on success, the ``→`` inside every agent trace step, the ``›`` prompt.
+    Writing one of those raises `UnicodeEncodeError` and takes down a command
+    that had otherwise completed its work, which is a genuinely confusing
+    failure: the index builds, then the process dies printing "done".
+
+    `reconfigure` mutates the existing stream object in place, so Rich and the
+    logging handlers pick this up even though they capture `sys.stdout`
+    later. Guarded because a redirected or wrapped stream may not support it.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError, OSError):  # pragma: no cover
+            # Non-reconfigurable stream (pytest capture, a pipe wrapper).
+            # `errors="replace"` is unavailable, but nothing here is fatal.
+            pass
+
+
+_force_utf8_streams()
+
 app = typer.Typer(
     name="retailiq",
     help="RetailIQ — agentic RAG assistant for retail operations.",
